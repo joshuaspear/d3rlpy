@@ -1,4 +1,4 @@
-from typing import List, cast
+from typing import List, cast, Union
 
 import numpy as np
 
@@ -16,7 +16,7 @@ class RandomIterator(TransitionIterator):
         n_steps_per_epoch: int,
         batch_size: int,
         n_steps: int = 1,
-        gamma: float = 0.99,
+        gamma: Union[float, None] = 0.99,
         n_frames: int = 1,
         real_ratio: float = 1.0,
         generated_maxlen: int = 100000,

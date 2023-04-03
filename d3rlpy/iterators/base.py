@@ -1,5 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from typing import Iterator, List, cast
+from typing import Iterator, List, cast, Union
 
 import numpy as np
 
@@ -13,7 +13,7 @@ class TransitionIterator(metaclass=ABCMeta):
     _generated_transitions: FIFOQueue[Transition]
     _batch_size: int
     _n_steps: int
-    _gamma: float
+    _gamma: Union[float, None]
     _n_frames: int
     _real_ratio: float
     _real_batch_size: int
@@ -24,7 +24,7 @@ class TransitionIterator(metaclass=ABCMeta):
         transitions: List[Transition],
         batch_size: int,
         n_steps: int = 1,
-        gamma: float = 0.99,
+        gamma: Union[float, None] = 0.99,
         n_frames: int = 1,
         real_ratio: float = 1.0,
         generated_maxlen: int = 100000,
@@ -33,7 +33,11 @@ class TransitionIterator(metaclass=ABCMeta):
         self._generated_transitions = FIFOQueue(generated_maxlen)
         self._batch_size = batch_size
         self._n_steps = n_steps
-        self._gamma = gamma
+        assert (gamma is None) or (isinstance(gamma, float))
+        if gamma is None:            
+            self._gamma = np.array([], dtype=np.float32)
+        else:
+            self._gamma = np.array(gamma)
         self._n_frames = n_frames
         self._real_ratio = real_ratio
         self._real_batch_size = batch_size

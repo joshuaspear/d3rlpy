@@ -15,5 +15,6 @@ cdef extern from "d3rlpy/dataset.h" namespace "d3rlpy" nogil:
         np.uint8_t* next_observation_i
         np.float32_t* next_observation_f
         float terminal
+        float gamma
         shared_ptr[CTransition] prev_transition
         shared_ptr[CTransition] next_transition

@@ -16,6 +16,7 @@ namespace d3rlpy {
     unsigned char* next_observation_i;
     float* next_observation_f;
     float terminal;
+    float gamma;
     shared_ptr<CTransition> prev_transition;
     shared_ptr<CTransition> next_transition;
   };

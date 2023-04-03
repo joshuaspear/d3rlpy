@@ -134,7 +134,7 @@ class LearnableBase:
     _batch_size: int
     _n_frames: int
     _n_steps: int
-    _gamma: float
+    _gamma: Optional[float]
     _scaler: Optional[Scaler]
     _action_scaler: Optional[ActionScaler]
     _reward_scaler: Optional[RewardScaler]
@@ -151,7 +151,7 @@ class LearnableBase:
         batch_size: int,
         n_frames: int,
         n_steps: int,
-        gamma: float,
+        gamma: Optional[float] = None,
         scaler: ScalerArg = None,
         action_scaler: ActionScalerArg = None,
         reward_scaler: RewardScalerArg = None,

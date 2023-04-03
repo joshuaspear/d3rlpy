@@ -116,13 +116,17 @@ class DQNImpl(DiscreteQFunctionMixin, TorchImplBase):
         q_tpn: torch.Tensor,
     ) -> torch.Tensor:
         assert self._q_func is not None
+        if len(self._gamma) == 0:
+            gamma = batch.gammas
+        else:
+            gamma = self._gamma**batch.n_steps
         return self._q_func.compute_error(
             observations=batch.observations,
             actions=batch.actions.long(),
             rewards=batch.rewards,
             target=q_tpn,
             terminals=batch.terminals,
-            gamma=self._gamma**batch.n_steps,
+            gamma=gamma,
         )
 
     def compute_target(self, batch: TorchMiniBatch) -> torch.Tensor:

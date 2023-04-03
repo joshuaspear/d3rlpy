@@ -49,9 +49,15 @@ def _to_episodes(
     rewards,
     terminals,
     episode_terminals,
+    gammas
 ):
     rets = []
     head_index = 0
+    if len(gammas) == 0:
+        # Assigning dummy value to satisfy C data types
+        __get_gammas = lambda i, head_index, gammas: gammas
+    else:
+        __get_gammas = lambda i, head_index, gammas: gammas[head_index:i + 1]
     for i in range(_safe_size(observations)):
         if episode_terminals[i]:
             episode = Episode(
@@ -61,6 +67,7 @@ def _to_episodes(
                 actions=actions[head_index:i + 1],
                 rewards=rewards[head_index:i + 1],
                 terminal=terminals[i],
+                gammas=__get_gammas(i, head_index, gammas)
             )
             rets.append(episode)
             head_index = i + 1
@@ -74,14 +81,22 @@ def _to_transitions(
     actions,
     rewards,
     terminal,
+    gammas
 ):
     rets = []
     num_data = _safe_size(observations)
     prev_transition = None
+    if len(gammas) == 0:
+        # Assinging dummy value to satisfy C types
+        __get_gamma = lambda i, gammas: 0.99
+    else:
+        __get_gamma = lambda i, gammas: gammas[i]
+
     for i in range(num_data):
         observation = observations[i]
         action = actions[i]
         reward = rewards[i]
+        gamma = __get_gamma(i, gammas)
 
         if i == num_data - 1:
             if terminal:
@@ -103,7 +118,8 @@ def _to_transitions(
             reward=reward,
             next_observation=next_observation,
             terminal=env_terminal,
-            prev_transition=prev_transition
+            prev_transition=prev_transition,
+            gamma=gamma
         )
 
         # set pointer to the next transition
@@ -179,6 +195,9 @@ class MDPDataset:
         discrete_action (bool): flag to use the given actions as discrete
             action-space actions. If ``None``, the action type is automatically
             determined.
+        gammas (numpy.ndarray): array of discount values. If ``None``, a 
+            constant discount value is assumed to be provided in the 
+            LearnableBase
 
     """
     def __init__(
@@ -189,6 +208,7 @@ class MDPDataset:
         terminals,
         episode_terminals=None,
         discrete_action=None,
+        gammas=None
     ):
         # validation
         assert isinstance(observations, np.ndarray),\
@@ -216,6 +236,12 @@ class MDPDataset:
         else:
             self._episode_terminals = np.asarray(
                 episode_terminals, dtype=np.float32).reshape(-1)
+
+        if gammas is None:
+            # If None, set to empty array to satisfy C types
+            self._gammas = np.array([], dtype=np.float32)
+        else:
+            self._gammas = np.asarray(gammas, dtype=np.float32).reshape(-1)
 
         # automatic action type detection
         if discrete_action is None:
@@ -268,6 +294,17 @@ class MDPDataset:
 
         """
         return self._terminals
+
+    @property
+    def gammas(self):
+        """ Returns the discount values.
+
+        Returns:
+            numpy.ndarray: array of discount values.
+
+        """
+        return self._gammas
+
 
     @property
     def episode_terminals(self):
@@ -427,7 +464,8 @@ class MDPDataset:
         actions,
         rewards,
         terminals,
-        episode_terminals=None
+        episode_terminals=None,
+        gammas=None
     ):
         """ Appends new data.
 
@@ -437,6 +475,7 @@ class MDPDataset:
             rewards (numpy.ndarray): rewards.
             terminals (numpy.ndarray): terminals.
             episode_terminals (numpy.ndarray): episode terminals.
+            gammas (numpy.ndarray): discount values.
 
         """
         # validation
@@ -469,6 +508,9 @@ class MDPDataset:
         self._episode_terminals = np.hstack(
             [self._episode_terminals, episode_terminals]
         )
+        if gammas is None:
+            gammas = np.array([], dtype=np.float32)
+        self._gammas = np.hstack([self._gammas, gammas])
 
 
         # convert new data to list of episodes
@@ -480,6 +522,7 @@ class MDPDataset:
             rewards=self._rewards,
             terminals=self._terminals,
             episode_terminals=self._episode_terminals,
+            gammas=self._gammas
         )
 
         self._episodes = episodes
@@ -501,7 +544,8 @@ class MDPDataset:
             dataset.actions,
             dataset.rewards,
             dataset.terminals,
-            dataset.episode_terminals
+            dataset.episode_terminals,
+            dataset.gammas
         )
 
     def dump(self, fname):
@@ -518,6 +562,7 @@ class MDPDataset:
             f.create_dataset('terminals', data=self._terminals)
             f.create_dataset('episode_terminals', data=self._episode_terminals)
             f.create_dataset('discrete_action', data=self.discrete_action)
+            f.create_dataset('gammas', data=self.gammas)
             f.create_dataset('version', data='1.0')
             f.flush()
 
@@ -551,12 +596,18 @@ class MDPDataset:
             rewards = f['rewards'][()]
             terminals = f['terminals'][()]
             discrete_action = f['discrete_action'][()]
+            
 
             # for backward compatibility
             if 'episode_terminals' in f:
                 episode_terminals = f['episode_terminals'][()]
             else:
                 episode_terminals = None
+
+            if 'gammas' in f:
+                gammas = f['gammas'][()]
+            else: 
+                gammas = None
 
             if 'version' not in f:
                 LOG.warning("The dataset structure might be incompatible.")
@@ -568,6 +619,7 @@ class MDPDataset:
             terminals=terminals,
             episode_terminals=episode_terminals,
             discrete_action=discrete_action,
+            gammas=gammas
         )
 
         return dataset
@@ -587,6 +639,7 @@ class MDPDataset:
             rewards=self._rewards,
             terminals=self._terminals,
             episode_terminals=self._episode_terminals,
+            gammas=self._gammas
         )
 
     def __len__(self):
@@ -629,6 +682,7 @@ class Episode:
         rewards (numpy.ndarray): scalar rewards.
         terminal (bool): binary terminal flag. If False, the episode is not
             terminated by the environment (e.g. timeout).
+        gammas (numpy.ndarray): discount values.
 
     """
     def __init__(
@@ -638,7 +692,8 @@ class Episode:
         observations,
         actions,
         rewards,
-        terminal=True,
+        gammas,
+        terminal=True
     ):
         # validation
         assert isinstance(observations, np.ndarray),\
@@ -662,6 +717,7 @@ class Episode:
         self._actions = actions
         self._rewards = np.asarray(rewards, dtype=np.float32)
         self._terminal = terminal
+        self._gammas = gammas
         self._transitions = None
 
     @property
@@ -705,6 +761,16 @@ class Episode:
         return self._terminal
 
     @property
+    def gammas(self):
+        """ Returns the discount values.
+
+        Returns:
+            numpy.ndarray: array of discount values.
+
+        """
+        return self._gammas
+
+    @property
     def transitions(self):
         """ Returns the transitions.
 
@@ -731,6 +797,7 @@ class Episode:
             actions=self._actions,
             rewards=self._rewards,
             terminal=self._terminal,
+            gammas=self._gammas
         )
 
     def size(self):
@@ -803,6 +870,7 @@ cdef class Transition:
         reward (float): reward at `t`.
         next_observation (numpy.ndarray): observation at `t+1`.
         terminal (int): terminal flag at `t+1`.
+        gamma (float): discount at `t`.
         prev_transition (d3rlpy.dataset.Transition):
             pointer to the previous transition.
         next_transition (d3rlpy.dataset.Transition):
@@ -827,6 +895,7 @@ cdef class Transition:
         float reward,
         np.ndarray next_observation,
         float terminal,
+        float gamma,
         Transition prev_transition=None,
         Transition next_transition=None
     ):
@@ -857,6 +926,7 @@ cdef class Transition:
         self._thisptr.get().action_size = action_size
         self._thisptr.get().reward = reward
         self._thisptr.get().terminal = terminal
+        self._thisptr.get().gamma = gamma
         self._thisptr.get().prev_transition = prev_ptr
         self._thisptr.get().next_transition = next_ptr
 
@@ -886,7 +956,7 @@ cdef class Transition:
         self._action = action
         self._next_observation = next_observation
         self._prev_transition = prev_transition
-        self._next_transition = next_transition
+        self._next_transition = next_transition 
 
     cdef TransitionPtr get_ptr(self):
         return self._thisptr
@@ -968,6 +1038,17 @@ cdef class Transition:
 
         """
         return self._thisptr.get().terminal
+
+    @property
+    def gamma(self):
+        """ Returns discount at `t`.
+
+        Returns:
+            float: discount at `t`.
+
+        """
+        return self._thisptr.get().gamma
+
 
     @property
     def prev_transition(self):
@@ -1125,7 +1206,7 @@ cdef class TransitionMiniBatch:
             mini-batch of transitions.
         n_frames (int): the number of frames to stack for image observation.
         n_steps (int): length of N-step sampling.
-        gamma (float): discount factor for N-step calculation.
+        gamma (np.ndarray): discount factor(s) for N-step calculation.
 
     """
     cdef list _transitions
@@ -1135,15 +1216,27 @@ cdef class TransitionMiniBatch:
     cdef np.ndarray _next_observations
     cdef np.ndarray _terminals
     cdef np.ndarray _n_steps
+    cdef np.ndarray _gammas
 
     def __cinit__(
         self,
         list transitions not None,
         int n_frames=1,
         int n_steps=1,
-        float gamma=0.99
+        np.ndarray gamma=np.array([0.99])
     ):
         self._transitions = transitions
+        
+        cdef bool _gamma_provided
+        # Set dummy value to satisfy C types
+        cdef float _gamma = 0.99
+
+        if gamma.shape[0] == 1:
+            _gamma_provided = True
+            _gamma = gamma.item()
+        else:
+            _gamma_provided = False
+            
 
         # determine observation shape
         cdef tuple observation_shape = transitions[0].get_observation_shape()
@@ -1168,6 +1261,7 @@ cdef class TransitionMiniBatch:
         )
         self._actions = np.empty((size,) + action_shape, dtype=action_dtype)
         self._rewards = np.empty((size, 1), dtype=np.float32)
+        self._gammas = np.empty((size, 1), dtype=np.float32)
         self._next_observations = np.empty(
             (size,) + observation_shape, dtype=observation_dtype
         )
@@ -1184,6 +1278,7 @@ cdef class TransitionMiniBatch:
         cdef void* observations_ptr = self._observations.data
         cdef void* actions_ptr = self._actions.data
         cdef FLOAT_t* rewards_ptr = <FLOAT_t*> self._rewards.data
+        cdef FLOAT_t* gammas_ptr = <FLOAT_t*> self._gammas.data
         cdef void* next_observations_ptr = self._next_observations.data
         cdef FLOAT_t* terminals_ptr = <FLOAT_t*> self._terminals.data
         cdef FLOAT_t* n_steps_ptr = <FLOAT_t*> self._n_steps.data
@@ -1209,9 +1304,11 @@ cdef class TransitionMiniBatch:
                 next_observations_ptr=next_observations_ptr,
                 terminals_ptr=terminals_ptr,
                 n_steps_ptr=n_steps_ptr,
+                gammas_ptr=gammas_ptr,
                 n_frames=n_frames,
                 n_steps=n_steps,
-                gamma=gamma,
+                gamma=_gamma,
+                gamma_provided=_gamma_provided, 
                 is_image=is_image,
                 is_discrete=is_discrete,
                 observation_ndim=observation_ndim
@@ -1286,7 +1383,7 @@ cdef class TransitionMiniBatch:
                 (<FLOAT_t*> actions_ptr) + offset,
                 <FLOAT_t*> src_action_ptr,
                 ptr.get().action_size * sizeof(FLOAT_t)
-            )
+            )            
 
     cdef void _assign_to_batch(
         self,
@@ -1298,9 +1395,11 @@ cdef class TransitionMiniBatch:
         void* next_observations_ptr,
         float* terminals_ptr,
         float* n_steps_ptr,
+        float* gammas_ptr,
         int n_frames,
         int n_steps,
         float gamma,
+        bool gamma_provided,
         bool is_image,
         bool is_discrete,
         int observation_ndim
@@ -1328,13 +1427,32 @@ cdef class TransitionMiniBatch:
 
         # compute N-step return
         next_ptr = ptr
+        cdef float tran_gamma 
+
+        # If a constant gamma is not provided to the class:
+            # Discount is taken from the transition
+        # Else: 
+            # Take the constant gamma provided to the class 
+
+        if gamma_provided is True:
+            gammas_ptr[batch_index] = gamma
+        else:
+            gammas_ptr[batch_index]=ptr.get().gamma
+
         for i in range(n_steps):
-            n_step_return += next_ptr.get().reward * gamma ** i
+            if gamma_provided is True:
+                tran_gamma = gamma**i
+            else:
+                tran_gamma = next_ptr.get().gamma
+            n_step_return += next_ptr.get().reward * tran_gamma
             if next_ptr.get().next_transition == nullptr or i == n_steps - 1:
                 break
             next_ptr = next_ptr.get().next_transition
 
         rewards_ptr[batch_index] = n_step_return
+        
+        
+        
 
         # assign data at t+N
         self._assign_observation(
@@ -1398,6 +1516,17 @@ cdef class TransitionMiniBatch:
 
         """
         return self._terminals
+
+    @property
+    def gammas(self):
+        """ Returns mini-batch of discount values `t`.
+
+        Returns:
+            numpy.ndarray: discount values at `t`.
+
+        """
+        return self._gammas
+
 
     @property
     def n_steps(self):
