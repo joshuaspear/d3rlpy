@@ -1442,6 +1442,8 @@ cdef class TransitionMiniBatch:
         for i in range(n_steps):
             if gamma_provided is True:
                 tran_gamma = gamma**i
+            elif i == 0:
+                tran_gamma = 1
             else:
                 tran_gamma = next_ptr.get().gamma
             n_step_return += next_ptr.get().reward * tran_gamma

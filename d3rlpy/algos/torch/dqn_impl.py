@@ -116,7 +116,7 @@ class DQNImpl(DiscreteQFunctionMixin, TorchImplBase):
         q_tpn: torch.Tensor,
     ) -> torch.Tensor:
         assert self._q_func is not None
-        if len(self._gamma) == 0:
+        if self._gamma is None:
             gamma = batch.gammas
         else:
             gamma = self._gamma**batch.n_steps

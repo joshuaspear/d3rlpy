@@ -37,7 +37,7 @@ class TransitionIterator(metaclass=ABCMeta):
         if gamma is None:            
             self._gamma = np.array([], dtype=np.float32)
         else:
-            self._gamma = np.array(gamma)
+            self._gamma = np.array([gamma])
         self._n_frames = n_frames
         self._real_ratio = real_ratio
         self._real_batch_size = batch_size
@@ -55,7 +55,6 @@ class TransitionIterator(metaclass=ABCMeta):
             transitions += self._sample_generated_transitions(fake_batch_size)
         else:
             transitions = [self.get_next() for _ in range(self._batch_size)]
-
         batch = TransitionMiniBatch(
             transitions,
             n_frames=self._n_frames,

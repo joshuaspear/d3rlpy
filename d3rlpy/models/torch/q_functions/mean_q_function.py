@@ -38,6 +38,11 @@ class DiscreteMeanQFunction(DiscreteQFunction, nn.Module):  # type: ignore
             dim=1, keepdim=True
         )
         y = rewards + gamma * target * (1 - terminals)
+        print(target)
+        print(rewards)
+        print(gamma)
+        print(y)
+        raise Exception
         loss = compute_huber_loss(value, y)
         return compute_reduce(loss, reduction)
 
