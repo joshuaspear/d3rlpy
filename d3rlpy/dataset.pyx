@@ -49,6 +49,7 @@ def _to_episodes(
     rewards,
     terminals,
     episode_terminals,
+    n_steps
 ):
     rets = []
     head_index = 0
@@ -61,6 +62,7 @@ def _to_episodes(
                 actions=actions[head_index:i + 1],
                 rewards=rewards[head_index:i + 1],
                 terminal=terminals[i],
+                n_steps=n_steps[head_index:i + 1]
             )
             rets.append(episode)
             head_index = i + 1
@@ -74,6 +76,7 @@ def _to_transitions(
     actions,
     rewards,
     terminal,
+    n_steps
 ):
     rets = []
     num_data = _safe_size(observations)
@@ -82,6 +85,7 @@ def _to_transitions(
         observation = observations[i]
         action = actions[i]
         reward = rewards[i]
+        n_step = n_steps[i]
 
         if i == num_data - 1:
             if terminal:
@@ -103,7 +107,8 @@ def _to_transitions(
             reward=reward,
             next_observation=next_observation,
             terminal=env_terminal,
-            prev_transition=prev_transition
+            prev_transition=prev_transition,
+            n_steps=n_step
         )
 
         # set pointer to the next transition
@@ -179,6 +184,8 @@ class MDPDataset:
         discrete_action (bool): flag to use the given actions as discrete
             action-space actions. If ``None``, the action type is automatically
             determined.
+        n_steps: (numpy.ndarray): array of adaptive n_step values. If ``None``, 
+            the values are automatically set to -1 
 
     """
     def __init__(
@@ -189,6 +196,7 @@ class MDPDataset:
         terminals,
         episode_terminals=None,
         discrete_action=None,
+        n_steps=None
     ):
         # validation
         assert isinstance(observations, np.ndarray),\
@@ -216,6 +224,11 @@ class MDPDataset:
         else:
             self._episode_terminals = np.asarray(
                 episode_terminals, dtype=np.float32).reshape(-1)
+
+        if n_steps is None:
+            # if None, n_steps are set to -1
+            n_steps = np.repeat(-1, len(observations))
+        self._n_steps = np.asarray(n_steps, dtype=np.int32)
 
         # automatic action type detection
         if discrete_action is None:
@@ -278,6 +291,17 @@ class MDPDataset:
 
         """
         return self._episode_terminals
+
+    @property
+    def n_steps(self):
+        """ Returns the n steps.
+
+        Returns:
+            numpy.ndarray: array of n steps.
+
+        """
+        return self._n_steps
+
 
     @property
     def episodes(self):
@@ -427,7 +451,8 @@ class MDPDataset:
         actions,
         rewards,
         terminals,
-        episode_terminals=None
+        episode_terminals=None,
+        n_steps=None
     ):
         """ Appends new data.
 
@@ -469,6 +494,9 @@ class MDPDataset:
         self._episode_terminals = np.hstack(
             [self._episode_terminals, episode_terminals]
         )
+        self._n_steps = np.hstack(
+            [self._n_steps, n_steps]
+        )
 
 
         # convert new data to list of episodes
@@ -480,6 +508,7 @@ class MDPDataset:
             rewards=self._rewards,
             terminals=self._terminals,
             episode_terminals=self._episode_terminals,
+            n_steps=self._n_steps
         )
 
         self._episodes = episodes
@@ -501,7 +530,8 @@ class MDPDataset:
             dataset.actions,
             dataset.rewards,
             dataset.terminals,
-            dataset.episode_terminals
+            dataset.episode_terminals,
+            dataset.n_steps
         )
 
     def dump(self, fname):
@@ -518,6 +548,7 @@ class MDPDataset:
             f.create_dataset('terminals', data=self._terminals)
             f.create_dataset('episode_terminals', data=self._episode_terminals)
             f.create_dataset('discrete_action', data=self.discrete_action)
+            f.create_dataset('n_steps', data=self.n_steps)
             f.create_dataset('version', data='1.0')
             f.flush()
 
@@ -558,6 +589,11 @@ class MDPDataset:
             else:
                 episode_terminals = None
 
+            if 'n_steps' in f:
+                n_steps = f['n_steps'][()]
+            else: 
+                n_steps = None
+
             if 'version' not in f:
                 LOG.warning("The dataset structure might be incompatible.")
 
@@ -568,6 +604,7 @@ class MDPDataset:
             terminals=terminals,
             episode_terminals=episode_terminals,
             discrete_action=discrete_action,
+            n_steps=n_steps
         )
 
         return dataset
@@ -587,6 +624,7 @@ class MDPDataset:
             rewards=self._rewards,
             terminals=self._terminals,
             episode_terminals=self._episode_terminals,
+            n_steps=self._n_steps
         )
 
     def __len__(self):
@@ -629,6 +667,8 @@ class Episode:
         rewards (numpy.ndarray): scalar rewards.
         terminal (bool): binary terminal flag. If False, the episode is not
             terminated by the environment (e.g. timeout).
+        n_steps (numpy.ndarray): adaptive n_step values. If None, the values
+            are automatically set to -1
 
     """
     def __init__(
@@ -639,6 +679,7 @@ class Episode:
         actions,
         rewards,
         terminal=True,
+        n_steps=None,
     ):
         # validation
         assert isinstance(observations, np.ndarray),\
@@ -655,6 +696,10 @@ class Episode:
             actions = np.asarray(actions, dtype=np.int32).reshape(-1)
         else:
             actions = np.asarray(actions, dtype=np.float32)
+        
+        # Account for legacy where n_steps was not a parameter
+        if n_steps is None:
+            n_steps = np.repeat(-1, len(observations))
 
         self.observation_shape = observation_shape
         self.action_size = action_size
@@ -663,6 +708,7 @@ class Episode:
         self._rewards = np.asarray(rewards, dtype=np.float32)
         self._terminal = terminal
         self._transitions = None
+        self._n_steps = np.asarray(n_steps, dtype=np.int32)
 
     @property
     def observations(self):
@@ -705,6 +751,17 @@ class Episode:
         return self._terminal
 
     @property
+    def n_steps(self):
+        """ Returns the n steps.
+
+        Returns:
+            numpy.ndarray: array of n_steps.
+
+        """
+        return self._n_steps
+
+
+    @property
     def transitions(self):
         """ Returns the transitions.
 
@@ -731,6 +788,7 @@ class Episode:
             actions=self._actions,
             rewards=self._rewards,
             terminal=self._terminal,
+            n_steps=self.n_steps
         )
 
     def size(self):
@@ -807,6 +865,7 @@ cdef class Transition:
             pointer to the previous transition.
         next_transition (d3rlpy.dataset.Transition):
             pointer to the next transition.
+        n_steps (int): Adaptive n step reward for transition
 
     """
     cdef TransitionPtr _thisptr
@@ -828,7 +887,8 @@ cdef class Transition:
         np.ndarray next_observation,
         float terminal,
         Transition prev_transition=None,
-        Transition next_transition=None
+        Transition next_transition=None,
+        int n_steps = -1
     ):
         cdef TransitionPtr prev_ptr
         cdef TransitionPtr next_ptr
@@ -859,6 +919,7 @@ cdef class Transition:
         self._thisptr.get().terminal = terminal
         self._thisptr.get().prev_transition = prev_ptr
         self._thisptr.get().next_transition = next_ptr
+        self._thisptr.get().n_steps = n_steps
 
         # assign observation
         if observation_shape.size() == 3:
@@ -980,6 +1041,18 @@ cdef class Transition:
 
         """
         return self._prev_transition
+
+    @property
+    def n_steps(self):
+        """ N steps at `t`.
+
+        Returns:
+            int: n_steps at `t`.
+
+
+        """
+        return self._thisptr.get().n_steps
+
 
     @prev_transition.setter
     def prev_transition(self, Transition transition):
@@ -1327,6 +1400,11 @@ cdef class TransitionMiniBatch:
         )
 
         # compute N-step return
+        # Perform adaptive N step if the N-step return is set to -1
+        if n_steps == -1:
+            n_steps = ptr.get().n_steps
+        else:
+            n_steps = n_steps
         next_ptr = ptr
         for i in range(n_steps):
             n_step_return += next_ptr.get().reward * gamma ** i
@@ -1404,7 +1482,9 @@ cdef class TransitionMiniBatch:
         """ Returns mini-batch of the number of steps before next observations.
 
         This will always include only ones if ``n_steps=1``. If ``n_steps`` is
-        bigger than ``1``. the values will depend on its episode length.
+        bigger than ``1``. the values will depend on its episode length. If 
+        n_steps=-1, this will depend on the values provided to the Transition
+        objects
 
         Returns:
             numpy.ndarray: the number of steps before next observations.

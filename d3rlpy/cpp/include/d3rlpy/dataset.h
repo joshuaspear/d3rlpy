@@ -18,6 +18,7 @@ namespace d3rlpy {
     float terminal;
     shared_ptr<CTransition> prev_transition;
     shared_ptr<CTransition> next_transition;
+    int n_steps;
   };
 
 }
