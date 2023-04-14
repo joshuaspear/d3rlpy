@@ -17,3 +17,5 @@ cdef extern from "d3rlpy/dataset.h" namespace "d3rlpy" nogil:
         float terminal
         shared_ptr[CTransition] prev_transition
         shared_ptr[CTransition] next_transition
+        float one_step_reg
+        float q_reg

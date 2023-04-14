@@ -14,6 +14,7 @@ from .torch import (
     DiscreteQRQFunction,
     Encoder,
     EncoderWithAction,
+    CRQLDiscreteMeanQFunction
 )
 
 
@@ -113,6 +114,32 @@ class MeanQFunctionFactory(QFunctionFactory):
         encoder: EncoderWithAction,
     ) -> ContinuousMeanQFunction:
         return ContinuousMeanQFunction(encoder)
+
+    def get_params(self, deep: bool = False) -> Dict[str, Any]:
+        return {
+            "share_encoder": self._share_encoder,
+        }
+
+
+class CRQLMeanQFunctionFactory(QFunctionFactory):
+
+    TYPE: ClassVar[str] = "cqrl_mean"
+
+    def __init__(self, share_encoder: bool = False, **kwargs: Any):
+        super().__init__(share_encoder)
+
+    def create_discrete(
+        self,
+        encoder: Encoder,
+        action_size: int,
+    ) -> CRQLDiscreteMeanQFunction:
+        return CRQLDiscreteMeanQFunction(encoder, action_size)
+
+    def create_continuous(
+        self,
+        encoder: EncoderWithAction,
+    ) -> ContinuousMeanQFunction:
+        raise NotImplementedError
 
     def get_params(self, deep: bool = False) -> Dict[str, Any]:
         return {
@@ -354,6 +381,7 @@ def create_q_func_factory(name: str, **kwargs: Any) -> QFunctionFactory:
 
 
 register_q_func_factory(MeanQFunctionFactory)
+register_q_func_factory(CRQLMeanQFunctionFactory)
 register_q_func_factory(QRQFunctionFactory)
 register_q_func_factory(IQNQFunctionFactory)
 register_q_func_factory(FQFQFunctionFactory)

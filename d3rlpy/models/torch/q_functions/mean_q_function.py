@@ -98,3 +98,26 @@ class ContinuousMeanQFunction(ContinuousQFunction, nn.Module):  # type: ignore
     @property
     def encoder(self) -> EncoderWithAction:
         return self._encoder
+
+
+class CRQLDiscreteMeanQFunction(CRQLDiscreteMeanQFunction):  # type: ignore
+
+    def compute_error(
+        self,
+        observations: torch.Tensor,
+        actions: torch.Tensor,
+        rewards: torch.Tensor,
+        target: torch.Tensor,
+        terminals: torch.Tensor,
+        gamma: float = 0.99,
+        reduction: str = "mean",
+        q_regs = 1
+    ) -> torch.Tensor:
+        one_hot = F.one_hot(actions.view(-1), num_classes=self.action_size)
+        value = (self.forward(observations) * one_hot.float()).sum(
+            dim=1, keepdim=True
+        )
+        reg_target = q_regs*target
+        y = rewards + gamma * reg_target * (1 - terminals)
+        loss = compute_huber_loss(value, y)
+        return compute_reduce(loss, reduction)

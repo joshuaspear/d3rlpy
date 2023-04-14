@@ -157,6 +157,8 @@ class TorchMiniBatch:
     _next_observations: torch.Tensor
     _terminals: torch.Tensor
     _n_steps: torch.Tensor
+    _one_step_regs: torch.Tensor
+    _q_regs: torch.Tensor
     _device: str
 
     def __init__(
@@ -174,6 +176,8 @@ class TorchMiniBatch:
         next_observations = _convert_to_torch(batch.next_observations, device)
         terminals = _convert_to_torch(batch.terminals, device)
         n_steps = _convert_to_torch(batch.n_steps, device)
+        one_step_regs = _convert_to_torch(batch.one_step_regs, device)
+        q_regs = _convert_to_torch(batch.q_regs, device)
 
         # apply scaler
         if scaler:
@@ -190,6 +194,8 @@ class TorchMiniBatch:
         self._next_observations = next_observations
         self._terminals = terminals
         self._n_steps = n_steps
+        self._one_step_regs = one_step_regs
+        self._q_regs
         self._device = device
 
     @property
@@ -203,6 +209,14 @@ class TorchMiniBatch:
     @property
     def rewards(self) -> torch.Tensor:
         return self._rewards
+    
+    @property
+    def one_step_regs(self) -> torch.Tensor:
+        return self._one_step_regs
+
+    @property
+    def q_regs(self) -> torch.Tensor:
+        return self._q_regs
 
     @property
     def next_observations(self) -> torch.Tensor:

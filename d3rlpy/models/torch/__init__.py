@@ -48,6 +48,7 @@ from .q_functions.iqn_q_function import (
 from .q_functions.mean_q_function import (
     ContinuousMeanQFunction,
     DiscreteMeanQFunction,
+    CRQLDiscreteMeanQFunction
 )
 from .q_functions.qr_q_function import (
     ContinuousQRQFunction,
@@ -93,4 +94,5 @@ __all__ = [
     "ProbabilisticEnsembleDynamicsModel",
     "ProbabilisticDynamicsModel",
     "Parameter",
+    "CRQLDiscreteMeanQFunction",
 ]

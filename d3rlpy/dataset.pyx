@@ -49,6 +49,8 @@ def _to_episodes(
     rewards,
     terminals,
     episode_terminals,
+    one_step_regs,
+    q_regs,
 ):
     rets = []
     head_index = 0
@@ -61,6 +63,8 @@ def _to_episodes(
                 actions=actions[head_index:i + 1],
                 rewards=rewards[head_index:i + 1],
                 terminal=terminals[i],
+                one_step_regs=one_step_regs[i],
+                q_regs=q_regs[i]
             )
             rets.append(episode)
             head_index = i + 1
@@ -74,6 +78,8 @@ def _to_transitions(
     actions,
     rewards,
     terminal,
+    one_step_regs,
+    q_regs,
 ):
     rets = []
     num_data = _safe_size(observations)
@@ -82,6 +88,9 @@ def _to_transitions(
         observation = observations[i]
         action = actions[i]
         reward = rewards[i]
+        one_step_reg = one_step_reg[i]
+        q_reg = q_reg[i]
+
 
         if i == num_data - 1:
             if terminal:
@@ -103,7 +112,9 @@ def _to_transitions(
             reward=reward,
             next_observation=next_observation,
             terminal=env_terminal,
-            prev_transition=prev_transition
+            prev_transition=prev_transition,
+            one_step_reg=one_step_reg,
+            q_reg=q_reg
         )
 
         # set pointer to the next transition
@@ -179,6 +190,10 @@ class MDPDataset:
         discrete_action (bool): flag to use the given actions as discrete
             action-space actions. If ``None``, the action type is automatically
             determined.
+        one_step_regs (numpy.ndarray): array of static regularisation values
+            to apply to the reward
+        q_regs (numpy.ndarray): array of static regularisation values
+            to apply to the q value in the q update
 
     """
     def __init__(
@@ -189,6 +204,8 @@ class MDPDataset:
         terminals,
         episode_terminals=None,
         discrete_action=None,
+        one_step_regs=None,
+        q_regs=None
     ):
         # validation
         assert isinstance(observations, np.ndarray),\
@@ -206,9 +223,18 @@ class MDPDataset:
         assert np.all(np.logical_not(np.isnan(rewards)))
         assert np.all(np.logical_not(np.isnan(terminals)))
 
+        if one_step_regs == None:
+            one_step_regs = np.ones(len(observations))
+        if q_regs == None:
+            q_regs = np.ones(len(observations))
+
         self._observations = observations
         self._rewards = np.asarray(rewards, dtype=np.float32).reshape(-1)
         self._terminals = np.asarray(terminals, dtype=np.float32).reshape(-1)
+        self._one_step_regs = np.asarray(
+            one_step_regs, dtype=np.float32).reshape(-1)
+        self._q_regs = np.asarray(
+            q_regs, dtype=np.float32).reshape(-1)
 
         if episode_terminals is None:
             # if None, episode terminals match the environment terminals
@@ -258,6 +284,26 @@ class MDPDataset:
 
         """
         return self._rewards
+
+    @property
+    def one_step_regs(self):
+        """ Returns the .
+
+        Returns:
+            numpy.ndarray: array of 
+
+        """
+        return self._one_step_regs
+
+    @property
+    def q_regs(self):
+        """ Returns the .
+
+        Returns:
+            numpy.ndarray: array of 
+
+        """
+        return self._q_regs
 
     @property
     def terminals(self):
@@ -427,7 +473,9 @@ class MDPDataset:
         actions,
         rewards,
         terminals,
-        episode_terminals=None
+        episode_terminals=None,
+        one_step_regs=None,
+        q_regs=None
     ):
         """ Appends new data.
 
@@ -452,6 +500,15 @@ class MDPDataset:
                 assert action.shape == (self.get_action_size(), ),\
                     f'Action size must be {self.get_action_size()}.'
 
+        if one_step_regs == None:
+            one_step_regs = np.ones(len(observations))
+        if q_regs == None:
+            q_regs = np.ones(len(observations))
+
+        one_step_regs = np.asarray(
+            one_step_regs, dtype=np.float32).reshape(-1)
+        q_regs = np.asarray(q_regs, dtype=np.float32).reshape(-1)
+
         # append observations
         self._observations = np.vstack([self._observations, observations])
 
@@ -469,7 +526,10 @@ class MDPDataset:
         self._episode_terminals = np.hstack(
             [self._episode_terminals, episode_terminals]
         )
-
+        self._one_step_regs = np.hstack(
+            [self._one_step_regs, one_step_regs])
+        self._q_regs = np.hstack(
+            [self._q_regs, q_regs])
 
         # convert new data to list of episodes
         episodes = _to_episodes(
@@ -480,6 +540,8 @@ class MDPDataset:
             rewards=self._rewards,
             terminals=self._terminals,
             episode_terminals=self._episode_terminals,
+            one_step_regs=self._one_step_regs,
+            q_regs=self._q_regs
         )
 
         self._episodes = episodes
@@ -501,7 +563,9 @@ class MDPDataset:
             dataset.actions,
             dataset.rewards,
             dataset.terminals,
-            dataset.episode_terminals
+            dataset.episode_terminals,
+            dataset.one_step_regs,
+            dataset.q_regs,
         )
 
     def dump(self, fname):
@@ -518,6 +582,8 @@ class MDPDataset:
             f.create_dataset('terminals', data=self._terminals)
             f.create_dataset('episode_terminals', data=self._episode_terminals)
             f.create_dataset('discrete_action', data=self.discrete_action)
+            f.create_dataset('one_step_regs', data=self.one_step_regs)
+            f.create_dataset('q_regs', data=self.q_regs)
             f.create_dataset('version', data='1.0')
             f.flush()
 
@@ -558,6 +624,13 @@ class MDPDataset:
             else:
                 episode_terminals = None
 
+            if 'one_step_regs' in f:
+                one_step_regs = f['one_step_regs'][()]
+                q_regs = f['q_regs'][()]
+            else:
+                one_step_regs = None
+                q_regs = None
+
             if 'version' not in f:
                 LOG.warning("The dataset structure might be incompatible.")
 
@@ -568,6 +641,8 @@ class MDPDataset:
             terminals=terminals,
             episode_terminals=episode_terminals,
             discrete_action=discrete_action,
+            one_step_regs=one_step_regs,
+            q_regs=q_regs
         )
 
         return dataset
@@ -587,6 +662,8 @@ class MDPDataset:
             rewards=self._rewards,
             terminals=self._terminals,
             episode_terminals=self._episode_terminals,
+            one_step_regs=self._one_step_regs,
+            q_regs=self._q_regs
         )
 
     def __len__(self):
@@ -639,6 +716,8 @@ class Episode:
         actions,
         rewards,
         terminal=True,
+        one_step_regs=None,
+        q_regs=None
     ):
         # validation
         assert isinstance(observations, np.ndarray),\
@@ -656,6 +735,16 @@ class Episode:
         else:
             actions = np.asarray(actions, dtype=np.float32)
 
+        if one_step_regs == None:
+            one_step_regs = np.ones(len(observations))
+        if q_regs == None:
+            q_regs = np.ones(len(observations))
+
+        one_step_regs = np.asarray(
+            one_step_regs, dtype=np.float32)
+        q_regs = np.asarray(q_regs, dtype=np.float32)
+
+
         self.observation_shape = observation_shape
         self.action_size = action_size
         self._observations = observations
@@ -663,6 +752,8 @@ class Episode:
         self._rewards = np.asarray(rewards, dtype=np.float32)
         self._terminal = terminal
         self._transitions = None
+        self._one_step_regs = one_step_regs
+        self._q_regs = q_regs
 
     @property
     def observations(self):
@@ -693,6 +784,27 @@ class Episode:
 
         """
         return self._rewards
+
+    @property
+    def one_step_regs(self):
+        """ Returns the .
+
+        Returns:
+            numpy.ndarray: array of 
+
+        """
+        return self._one_step_regs
+
+    @property
+    def q_regs(self):
+        """ Returns the .
+
+        Returns:
+            numpy.ndarray: array of 
+
+        """
+        return self._q_regs
+
 
     @property
     def terminal(self):
@@ -828,7 +940,9 @@ cdef class Transition:
         np.ndarray next_observation,
         float terminal,
         Transition prev_transition=None,
-        Transition next_transition=None
+        Transition next_transition=None,
+        float one_step_reg=1.0,
+        float q_reg=1.0
     ):
         cdef TransitionPtr prev_ptr
         cdef TransitionPtr next_ptr
@@ -859,6 +973,8 @@ cdef class Transition:
         self._thisptr.get().terminal = terminal
         self._thisptr.get().prev_transition = prev_ptr
         self._thisptr.get().next_transition = next_ptr
+        self._thisptr.get().one_step_reg = one_step_reg
+        self._thisptr.get().q_reg = q_reg
 
         # assign observation
         if observation_shape.size() == 3:
@@ -948,6 +1064,26 @@ cdef class Transition:
 
         """
         return self._thisptr.get().reward
+
+    @property
+    def one_step_reg(self):
+        """ Returns  at `t`.
+
+        Returns:
+            float:  at `t`.
+
+        """
+        return self._thisptr.get().one_step_reg
+
+    @property
+    def q_reg(self):
+        """ Returns  at `t`.
+
+        Returns:
+            float:  at `t`.
+
+        """
+        return self._thisptr.get().q_reg
 
     @property
     def next_observation(self):
@@ -1135,6 +1271,8 @@ cdef class TransitionMiniBatch:
     cdef np.ndarray _next_observations
     cdef np.ndarray _terminals
     cdef np.ndarray _n_steps
+    cdef np.ndarray _one_step_regs
+    cdef np.ndarray _q_regs
 
     def __cinit__(
         self,
@@ -1173,6 +1311,8 @@ cdef class TransitionMiniBatch:
         )
         self._terminals = np.empty((size, 1), dtype=np.float32)
         self._n_steps = np.empty((size, 1), dtype=np.float32)
+        self._one_step_regs = np.empty((size, 1), dtype=np.float32)
+        self._q_regs = np.empty((size, 1), dtype=np.float32)
 
         # determine flags
         cdef bool is_image
@@ -1187,6 +1327,9 @@ cdef class TransitionMiniBatch:
         cdef void* next_observations_ptr = self._next_observations.data
         cdef FLOAT_t* terminals_ptr = <FLOAT_t*> self._terminals.data
         cdef FLOAT_t* n_steps_ptr = <FLOAT_t*> self._n_steps.data
+        cdef FLOAT_t* one_step_regs_ptr = <FLOAT_t*> self._one_step_regs.data
+        cdef FLOAT_t* q_regs_ptr = <FLOAT_t*> self._q_regs.data
+
 
         # get pointers to transitions
         cdef int i
@@ -1214,7 +1357,9 @@ cdef class TransitionMiniBatch:
                 gamma=gamma,
                 is_image=is_image,
                 is_discrete=is_discrete,
-                observation_ndim=observation_ndim
+                observation_ndim=observation_ndim,
+                one_step_regs_ptr=one_step_regs_ptr,
+                q_regs_ptr=q_regs_ptr
             )
 
     cdef void _assign_observation(
@@ -1303,7 +1448,9 @@ cdef class TransitionMiniBatch:
         float gamma,
         bool is_image,
         bool is_discrete,
-        int observation_ndim
+        int observation_ndim,
+        float* one_step_regs_ptr,
+        float* q_regs_ptr
     ) nogil:
         cdef int i
         cdef float n_step_return = 0.0
@@ -1329,12 +1476,14 @@ cdef class TransitionMiniBatch:
         # compute N-step return
         next_ptr = ptr
         for i in range(n_steps):
-            n_step_return += next_ptr.get().reward * gamma ** i
+            n_step_return += next_ptr.get().one_step_reg*next_ptr.get().reward * gamma ** i
             if next_ptr.get().next_transition == nullptr or i == n_steps - 1:
                 break
             next_ptr = next_ptr.get().next_transition
 
         rewards_ptr[batch_index] = n_step_return
+        one_step_regs_ptr[batch_index] = next_ptr.get().one_step_reg
+        q_regs_ptr[batch_index] = next_ptr.get().q_reg
 
         # assign data at t+N
         self._assign_observation(
@@ -1378,6 +1527,27 @@ cdef class TransitionMiniBatch:
 
         """
         return self._rewards
+
+    @property
+    def one_step_regs(self):
+        """ Returns mini-batch of  at `t`.
+
+        Returns:
+            numpy.ndarray:  at `t`.
+
+        """
+        return self._one_step_regs
+
+    @property
+    def _q_regs(self):
+        """ Returns mini-batch of  at `t`.
+
+        Returns:
+            numpy.ndarray:  at `t`.
+
+        """
+        return self._q_regs
+
 
     @property
     def next_observations(self):
