@@ -49,10 +49,17 @@ def _to_episodes(
     rewards,
     terminals,
     episode_terminals,
-    one_step_regs,
-    q_regs,
+    one_step_regs=None,
+    q_regs=None,
 ):
     rets = []
+    if one_step_regs is None:
+        one_step_regs = np.ones(_safe_size(observations))
+        one_step_regs = np.asarray(one_step_regs, dtype=np.float32)
+    if q_regs is None:
+        q_regs = np.ones(_safe_size(observations))
+        q_regs = np.asarray(one_step_regs, dtype=np.float32)
+
     head_index = 0
     for i in range(_safe_size(observations)):
         if episode_terminals[i]:
@@ -78,18 +85,24 @@ def _to_transitions(
     actions,
     rewards,
     terminal,
-    one_step_regs,
-    q_regs,
+    one_step_regs=None,
+    q_regs=None,
 ):
     rets = []
     num_data = _safe_size(observations)
     prev_transition = None
+    if one_step_regs is None:
+        one_step_regs = np.ones(num_data)
+        one_step_regs = np.asarray(one_step_regs, dtype=np.float32)
+    if q_regs is None:
+        q_regs = np.ones(num_data)
+        q_regs = np.asarray(one_step_regs, dtype=np.float32)
     for i in range(num_data):
         observation = observations[i]
         action = actions[i]
         reward = rewards[i]
-        one_step_reg = one_step_reg[i]
-        q_reg = q_reg[i]
+        one_step_reg = one_step_regs[i]
+        q_reg = q_regs[i]
 
 
         if i == num_data - 1:
@@ -223,9 +236,9 @@ class MDPDataset:
         assert np.all(np.logical_not(np.isnan(rewards)))
         assert np.all(np.logical_not(np.isnan(terminals)))
 
-        if one_step_regs == None:
+        if one_step_regs is None:
             one_step_regs = np.ones(len(observations))
-        if q_regs == None:
+        if q_regs is None:
             q_regs = np.ones(len(observations))
 
         self._observations = observations
@@ -500,9 +513,9 @@ class MDPDataset:
                 assert action.shape == (self.get_action_size(), ),\
                     f'Action size must be {self.get_action_size()}.'
 
-        if one_step_regs == None:
+        if one_step_regs is None:
             one_step_regs = np.ones(len(observations))
-        if q_regs == None:
+        if q_regs is None:
             q_regs = np.ones(len(observations))
 
         one_step_regs = np.asarray(
@@ -735,9 +748,9 @@ class Episode:
         else:
             actions = np.asarray(actions, dtype=np.float32)
 
-        if one_step_regs == None:
+        if one_step_regs is None:
             one_step_regs = np.ones(len(observations))
-        if q_regs == None:
+        if q_regs is None:
             q_regs = np.ones(len(observations))
 
         one_step_regs = np.asarray(
@@ -1539,7 +1552,7 @@ cdef class TransitionMiniBatch:
         return self._one_step_regs
 
     @property
-    def _q_regs(self):
+    def q_regs(self):
         """ Returns mini-batch of  at `t`.
 
         Returns:

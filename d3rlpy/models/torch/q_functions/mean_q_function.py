@@ -100,7 +100,7 @@ class ContinuousMeanQFunction(ContinuousQFunction, nn.Module):  # type: ignore
         return self._encoder
 
 
-class CRQLDiscreteMeanQFunction(CRQLDiscreteMeanQFunction):  # type: ignore
+class CRQLDiscreteMeanQFunction(DiscreteMeanQFunction):  # type: ignore
 
     def compute_error(
         self,

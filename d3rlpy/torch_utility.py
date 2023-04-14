@@ -195,7 +195,7 @@ class TorchMiniBatch:
         self._terminals = terminals
         self._n_steps = n_steps
         self._one_step_regs = one_step_regs
-        self._q_regs
+        self._q_regs = q_regs
         self._device = device
 
     @property
