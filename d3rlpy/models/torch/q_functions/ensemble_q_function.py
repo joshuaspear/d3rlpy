@@ -86,6 +86,7 @@ class EnsembleQFunction(nn.Module):  # type: ignore
         target: torch.Tensor,
         terminals: torch.Tensor,
         gamma: float = 0.99,
+        **kwargs
     ) -> torch.Tensor:
         assert target.ndim == 2
 
@@ -101,6 +102,7 @@ class EnsembleQFunction(nn.Module):  # type: ignore
                 terminals=terminals,
                 gamma=gamma,
                 reduction="none",
+                **kwargs
             )
             td_sum += loss.mean()
         return td_sum
