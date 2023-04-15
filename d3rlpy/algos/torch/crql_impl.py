@@ -17,5 +17,5 @@ class DiscreteCRQLImpl(DoubleDQNImpl):
             target=q_tpn,
             terminals=batch.terminals,
             gamma=self._gamma**batch.n_steps,
-            discount_reg=batch.q_regs
+            q_regs=batch.q_regs
         )
