@@ -19,6 +19,7 @@ from .sac import SAC, DiscreteSAC
 from .td3 import TD3
 from .td3_plus_bc import TD3PlusBC
 from .crql import DiscreteCRQL
+from .cql_crql import DiscreteCQLCRQL
 
 __all__ = [
     "AlgoBase",
@@ -48,7 +49,8 @@ __all__ = [
     "DiscreteRandomPolicy",
     "get_algo",
     "create_algo",
-    "DiscreteCRQL"
+    "DiscreteCRQL",
+    "DiscreteCQLCRQL"
 ]
 
 
@@ -61,7 +63,8 @@ DISCRETE_ALGORITHMS: Dict[str, Type[AlgoBase]] = {
     "nfq": NFQ,
     "sac": DiscreteSAC,
     "random": DiscreteRandomPolicy,
-    "crql": DiscreteCRQL
+    "crql": DiscreteCRQL,
+    "cql_crql": DiscreteCQLCRQL
 }
 
 CONTINUOUS_ALGORITHMS: Dict[str, Type[AlgoBase]] = {
