@@ -856,6 +856,8 @@ class Episode:
             actions=self._actions,
             rewards=self._rewards,
             terminal=self._terminal,
+            one_step_regs=self._one_step_regs,
+            q_regs=self._q_regs,
         )
 
     def size(self):
