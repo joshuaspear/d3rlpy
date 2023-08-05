@@ -11,6 +11,7 @@ from ...models.builders import (
     create_discrete_q_function,
     create_parameter,
     create_squashed_normal_policy,
+    create_continuous_regulariser
 )
 from ...models.encoders import EncoderFactory, make_encoder_field
 from ...models.optimizers import OptimizerFactory, make_optimizer_field
@@ -18,6 +19,8 @@ from ...models.q_functions import QFunctionFactory, make_q_func_field
 from ...torch_utility import TorchMiniBatch
 from .base import QLearningAlgoBase
 from .torch.sac_impl import DiscreteSACImpl, SACImpl
+
+from .regularisers import RegulariserFactory, make_regulariser_field
 
 __all__ = ["SACConfig", "SAC", "DiscreteSACConfig", "DiscreteSAC"]
 
@@ -106,6 +109,7 @@ class SACConfig(LearnableConfig):
     tau: float = 0.005
     n_critics: int = 2
     initial_temperature: float = 1.0
+    regulariser_factory: RegulariserFactory = make_regulariser_field()
 
     def create(self, device: DeviceArg = False) -> "SAC":
         return SAC(self, device)
@@ -148,6 +152,10 @@ class SAC(QLearningAlgoBase[SACImpl, SACConfig]):
         temp_optim = self._config.temp_optim_factory.create(
             log_temp.parameters(), lr=self._config.temp_learning_rate
         )
+        
+        regulariser = create_continuous_regulariser(
+            regulariser_factory=self._config.regulariser_factory)
+
 
         self._impl = SACImpl(
             observation_shape=observation_shape,
@@ -161,6 +169,7 @@ class SAC(QLearningAlgoBase[SACImpl, SACConfig]):
             gamma=self._config.gamma,
             tau=self._config.tau,
             device=self._device,
+            regulariser=regulariser
         )
 
     def inner_update(self, batch: TorchMiniBatch) -> Dict[str, float]:

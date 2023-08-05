@@ -70,7 +70,7 @@ class CQLImpl(SACImpl):
 
     def compute_critic_loss(
         self, batch: TorchMiniBatch, q_tpn: torch.Tensor
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor]:
         loss = super().compute_critic_loss(batch, q_tpn)
         conservative_loss = self._compute_conservative_loss(
             batch.observations, batch.actions, batch.next_observations
@@ -78,7 +78,7 @@ class CQLImpl(SACImpl):
         return loss + conservative_loss, conservative_loss
     
     @train_api
-    def update_critic(self, batch: TorchMiniBatch) -> float:
+    def update_critic(self, batch: TorchMiniBatch) -> np.array:
         self._critic_optim.zero_grad()
 
         q_tpn = self.compute_target(batch)
@@ -232,12 +232,13 @@ class DiscreteCQLImpl(DoubleDQNImpl):
         self,
         batch: TorchMiniBatch,
         q_tpn: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor]:
         loss = super().compute_loss(batch, q_tpn)
         conservative_loss = self._compute_conservative_loss(
             batch.observations, batch.actions.long()
         )
-        return loss + self._alpha * conservative_loss, conservative_loss
+        conservative_loss = self._alpha * conservative_loss
+        return loss + conservative_loss, conservative_loss
 
     def _compute_conservative_loss(
         self, obs_t: torch.Tensor, act_t: torch.Tensor

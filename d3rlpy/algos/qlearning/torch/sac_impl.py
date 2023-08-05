@@ -19,6 +19,8 @@ from ..base import QLearningAlgoImplBase
 from .ddpg_impl import DDPGBaseImpl
 from .utility import DiscreteQFunctionMixin
 
+from ..regularisers import Regulariser
+
 __all__ = ["SACImpl", "DiscreteSACImpl"]
 
 
@@ -39,6 +41,7 @@ class SACImpl(DDPGBaseImpl):
         gamma: float,
         tau: float,
         device: str,
+        regulariser: Regulariser
     ):
         super().__init__(
             observation_shape=observation_shape,
@@ -50,6 +53,7 @@ class SACImpl(DDPGBaseImpl):
             gamma=gamma,
             tau=tau,
             device=device,
+            regulariser=regulariser
         )
         self._log_temp = log_temp
         self._temp_optim = temp_optim

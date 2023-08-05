@@ -7,6 +7,7 @@ from ...dataset import Shape
 from ...models.builders import (
     create_continuous_q_function,
     create_deterministic_policy,
+    create_continuous_regulariser
 )
 from ...models.encoders import EncoderFactory, make_encoder_field
 from ...models.optimizers import OptimizerFactory, make_optimizer_field
@@ -14,6 +15,8 @@ from ...models.q_functions import QFunctionFactory, make_q_func_field
 from ...torch_utility import TorchMiniBatch
 from .base import QLearningAlgoBase
 from .torch.ddpg_impl import DDPGImpl
+
+from .regularisers import RegulariserFactory, make_regulariser_field
 
 __all__ = ["DDPGConfig", "DDPG"]
 
@@ -82,6 +85,7 @@ class DDPGConfig(LearnableConfig):
     q_func_factory: QFunctionFactory = make_q_func_field()
     tau: float = 0.005
     n_critics: int = 1
+    regulariser_factory: RegulariserFactory = make_regulariser_field()
 
     def create(self, device: DeviceArg = False) -> "DDPG":
         return DDPG(self, device)
@@ -116,6 +120,9 @@ class DDPG(QLearningAlgoBase[DDPGImpl, DDPGConfig]):
         critic_optim = self._config.critic_optim_factory.create(
             q_func.parameters(), lr=self._config.critic_learning_rate
         )
+        
+        regulariser = create_continuous_regulariser(
+            regulariser_factory=self._config.regulariser_factory)
 
         self._impl = DDPGImpl(
             observation_shape=observation_shape,
@@ -127,6 +134,7 @@ class DDPG(QLearningAlgoBase[DDPGImpl, DDPGConfig]):
             gamma=self._config.gamma,
             tau=self._config.tau,
             device=self._device,
+            regulariser = regulariser
         )
 
     def inner_update(self, batch: TorchMiniBatch) -> Dict[str, float]:

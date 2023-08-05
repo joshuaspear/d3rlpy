@@ -18,6 +18,8 @@ from ...torch_utility import TorchMiniBatch
 from .base import QLearningAlgoBase
 from .torch.cql_impl import CQLImpl, DiscreteCQLImpl
 
+from .regularisers import RegulariserPass
+
 __all__ = ["CQLConfig", "CQL", "DiscreteCQLConfig", "DiscreteCQL"]
 
 
@@ -122,6 +124,7 @@ class CQLConfig(LearnableConfig):
     conservative_weight: float = 5.0
     n_action_samples: int = 10
     soft_q_backup: bool = False
+    regulariser = RegulariserPass()
 
     def create(self, device: DeviceArg = False) -> "CQL":
         return CQL(self, device)
@@ -189,6 +192,7 @@ class CQL(QLearningAlgoBase[CQLImpl, CQLConfig]):
             n_action_samples=self._config.n_action_samples,
             soft_q_backup=self._config.soft_q_backup,
             device=self._device,
+            regulariser=self._config.regulariser
         )
 
     def inner_update(self, batch: TorchMiniBatch) -> Dict[str, float]:

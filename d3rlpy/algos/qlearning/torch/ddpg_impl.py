@@ -1,5 +1,8 @@
 import copy
 from abc import ABCMeta, abstractmethod
+from typing import Tuple
+
+import numpy as np
 
 import torch
 from torch.optim import Optimizer
@@ -13,6 +16,8 @@ from ....models.torch import (
 from ....torch_utility import TorchMiniBatch, soft_sync, train_api
 from ..base import QLearningAlgoImplBase
 from .utility import ContinuousQFunctionMixin
+
+from ..regularisers import Regulariser
 
 __all__ = ["DDPGImpl"]
 
@@ -40,6 +45,7 @@ class DDPGBaseImpl(
         gamma: float,
         tau: float,
         device: str,
+        regulariser: Regulariser
     ):
         super().__init__(
             observation_shape=observation_shape,
@@ -54,24 +60,28 @@ class DDPGBaseImpl(
         self._critic_optim = critic_optim
         self._targ_q_func = copy.deepcopy(q_func)
         self._targ_policy = copy.deepcopy(policy)
+        self._regulariser = regulariser
 
     @train_api
-    def update_critic(self, batch: TorchMiniBatch) -> float:
+    def update_critic(self, batch: TorchMiniBatch) -> np.array:
         self._critic_optim.zero_grad()
 
         q_tpn = self.compute_target(batch)
 
-        loss = self.compute_critic_loss(batch, q_tpn)
+        loss, reg_val = self.compute_critic_loss(batch, q_tpn)
 
         loss.backward()
         self._critic_optim.step()
-
-        return float(loss.cpu().detach().numpy())
+        res = np.array([
+            float(loss.cpu().detach().numpy()), 
+            float(reg_val.cpu().detach().numpy())
+        ])
+        return res
 
     def compute_critic_loss(
         self, batch: TorchMiniBatch, q_tpn: torch.Tensor
-    ) -> torch.Tensor:
-        return self._q_func.compute_error(
+    ) -> Tuple[torch.Tensor]:
+        loss = self._q_func.compute_error(
             observations=batch.observations,
             actions=batch.actions,
             rewards=batch.rewards,
@@ -79,6 +89,8 @@ class DDPGBaseImpl(
             terminals=batch.terminals,
             gamma=self._gamma**batch.intervals,
         )
+        reg_val = self._regulariser(algo=self, batch=batch)
+        return loss + reg_val, reg_val
 
     @train_api
     def update_actor(self, batch: TorchMiniBatch) -> float:
