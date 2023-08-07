@@ -6,17 +6,16 @@ from ...constants import IMPL_NOT_INITIALIZED_ERROR, ActionSpace
 from ...dataset import Shape
 from ...models.builders import (
     create_continuous_q_function,
+    create_continuous_regulariser,
     create_deterministic_policy,
-    create_continuous_regulariser
 )
 from ...models.encoders import EncoderFactory, make_encoder_field
 from ...models.optimizers import OptimizerFactory, make_optimizer_field
 from ...models.q_functions import QFunctionFactory, make_q_func_field
+from ...models.regularisers import RegulariserFactory, make_regulariser_field
 from ...torch_utility import TorchMiniBatch
 from .base import QLearningAlgoBase
 from .torch.ddpg_impl import DDPGImpl
-
-from .regularisers import RegulariserFactory, make_regulariser_field
 
 __all__ = ["DDPGConfig", "DDPG"]
 
@@ -120,9 +119,10 @@ class DDPG(QLearningAlgoBase[DDPGImpl, DDPGConfig]):
         critic_optim = self._config.critic_optim_factory.create(
             q_func.parameters(), lr=self._config.critic_learning_rate
         )
-        
+
         regulariser = create_continuous_regulariser(
-            regulariser_factory=self._config.regulariser_factory)
+            regulariser_factory=self._config.regulariser_factory
+        )
 
         self._impl = DDPGImpl(
             observation_shape=observation_shape,
@@ -134,17 +134,21 @@ class DDPG(QLearningAlgoBase[DDPGImpl, DDPGConfig]):
             gamma=self._config.gamma,
             tau=self._config.tau,
             device=self._device,
-            regulariser = regulariser
+            regulariser=regulariser,
         )
 
     def inner_update(self, batch: TorchMiniBatch) -> Dict[str, float]:
         assert self._impl is not None, IMPL_NOT_INITIALIZED_ERROR
-        critic_loss = self._impl.update_critic(batch)
+        critic_loss, reg_val = self._impl.update_critic(batch)
         actor_loss = self._impl.update_actor(batch)
         self._impl.update_critic_target()
         self._impl.update_actor_target()
-
-        return {"critic_loss": critic_loss, "actor_loss": actor_loss}
+        res = {
+            "critic_loss": critic_loss,
+            "critic_regularisation_value": reg_val,
+            "actor_loss": actor_loss,
+        }
+        return res
 
     def get_action_type(self) -> ActionSpace:
         return ActionSpace.CONTINUOUS

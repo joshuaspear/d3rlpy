@@ -4,10 +4,14 @@ from typing import Dict
 from ...base import DeviceArg, LearnableConfig, register_learnable
 from ...constants import IMPL_NOT_INITIALIZED_ERROR, ActionSpace
 from ...dataset import Shape
-from ...models.builders import create_discrete_q_function
+from ...models.builders import (
+    create_discrete_q_function,
+    create_discrete_regulariser,
+)
 from ...models.encoders import EncoderFactory, make_encoder_field
 from ...models.optimizers import OptimizerFactory, make_optimizer_field
 from ...models.q_functions import QFunctionFactory, make_q_func_field
+from ...models.regularisers import RegulariserFactory, make_regulariser_field
 from ...torch_utility import TorchMiniBatch
 from .base import QLearningAlgoBase
 from .torch.dqn_impl import DoubleDQNImpl, DQNImpl
@@ -55,6 +59,7 @@ class DQNConfig(LearnableConfig):
     gamma: float = 0.99
     n_critics: int = 1
     target_update_interval: int = 8000
+    regulariser_factory: RegulariserFactory = make_regulariser_field()
 
     def create(self, device: DeviceArg = False) -> "DQN":
         return DQN(self, device)
@@ -77,6 +82,10 @@ class DQN(QLearningAlgoBase[DQNImpl, DQNConfig]):
             device=self._device,
         )
 
+        regulariser = create_discrete_regulariser(
+            regulariser_factory=self._config.regulariser_factory
+        )
+
         optim = self._config.optim_factory.create(
             q_func.parameters(), lr=self._config.learning_rate
         )
@@ -88,14 +97,15 @@ class DQN(QLearningAlgoBase[DQNImpl, DQNConfig]):
             optim=optim,
             gamma=self._config.gamma,
             device=self._device,
+            regulariser=regulariser,
         )
 
     def inner_update(self, batch: TorchMiniBatch) -> Dict[str, float]:
         assert self._impl is not None, IMPL_NOT_INITIALIZED_ERROR
-        loss = self._impl.update(batch)
+        loss, reg_val = self._impl.update(batch)
         if self._grad_step % self._config.target_update_interval == 0:
             self._impl.update_target()
-        return {"loss": loss}
+        return {"loss": loss, "regularisation_value": reg_val}
 
     def get_action_type(self) -> ActionSpace:
         return ActionSpace.DISCRETE
@@ -170,6 +180,10 @@ class DoubleDQN(DQN):
             device=self._device,
         )
 
+        regulariser = create_discrete_regulariser(
+            regulariser_factory=self._config.regulariser_factory
+        )
+
         optim = self._config.optim_factory.create(
             q_func.parameters(), lr=self._config.learning_rate
         )
@@ -181,6 +195,7 @@ class DoubleDQN(DQN):
             optim=optim,
             gamma=self._config.gamma,
             device=self._device,
+            regulariser=regulariser,
         )
 
 

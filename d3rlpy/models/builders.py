@@ -6,7 +6,7 @@ from torch import nn
 from ..dataset import Shape
 from .encoders import EncoderFactory
 from .q_functions import QFunctionFactory
-from ..algos.qlearning.regularisers import RegulariserFactory
+from .regularisers import Regulariser, RegulariserFactory
 from .torch import (
     CategoricalPolicy,
     ConditionalVAE,
@@ -98,11 +98,18 @@ def create_continuous_q_function(
     q_func.to(device)
     return q_func
 
-def create_continuous_regulariser(regulariser_factory:RegulariserFactory):
+
+def create_continuous_regulariser(
+    regulariser_factory: RegulariserFactory,
+) -> Regulariser:
     return regulariser_factory.create_with_action()
 
-def create_discrete_regulariser(regulariser_factory:RegulariserFactory):
+
+def create_discrete_regulariser(
+    regulariser_factory: RegulariserFactory,
+) -> Regulariser:
     return regulariser_factory.create()
+
 
 def create_deterministic_policy(
     observation_shape: Shape,

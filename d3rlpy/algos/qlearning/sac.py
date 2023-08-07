@@ -8,19 +8,19 @@ from ...dataset import Shape
 from ...models.builders import (
     create_categorical_policy,
     create_continuous_q_function,
+    create_continuous_regulariser,
     create_discrete_q_function,
+    create_discrete_regulariser,
     create_parameter,
     create_squashed_normal_policy,
-    create_continuous_regulariser
 )
 from ...models.encoders import EncoderFactory, make_encoder_field
 from ...models.optimizers import OptimizerFactory, make_optimizer_field
 from ...models.q_functions import QFunctionFactory, make_q_func_field
+from ...models.regularisers import RegulariserFactory, make_regulariser_field
 from ...torch_utility import TorchMiniBatch
 from .base import QLearningAlgoBase
 from .torch.sac_impl import DiscreteSACImpl, SACImpl
-
-from .regularisers import RegulariserFactory, make_regulariser_field
 
 __all__ = ["SACConfig", "SAC", "DiscreteSACConfig", "DiscreteSAC"]
 
@@ -152,10 +152,10 @@ class SAC(QLearningAlgoBase[SACImpl, SACConfig]):
         temp_optim = self._config.temp_optim_factory.create(
             log_temp.parameters(), lr=self._config.temp_learning_rate
         )
-        
-        regulariser = create_continuous_regulariser(
-            regulariser_factory=self._config.regulariser_factory)
 
+        regulariser = create_continuous_regulariser(
+            regulariser_factory=self._config.regulariser_factory
+        )
 
         self._impl = SACImpl(
             observation_shape=observation_shape,
@@ -169,7 +169,7 @@ class SAC(QLearningAlgoBase[SACImpl, SACConfig]):
             gamma=self._config.gamma,
             tau=self._config.tau,
             device=self._device,
-            regulariser=regulariser
+            regulariser=regulariser,
         )
 
     def inner_update(self, batch: TorchMiniBatch) -> Dict[str, float]:
@@ -182,8 +182,9 @@ class SAC(QLearningAlgoBase[SACImpl, SACConfig]):
             temp_loss, temp = self._impl.update_temp(batch)
             metrics.update({"temp_loss": temp_loss, "temp": temp})
 
-        critic_loss = self._impl.update_critic(batch)
+        critic_loss, reg_val = self._impl.update_critic(batch)
         metrics.update({"critic_loss": critic_loss})
+        metrics.update({"critic_regularisation_value": reg_val})
 
         actor_loss = self._impl.update_actor(batch)
         metrics.update({"actor_loss": actor_loss})
@@ -266,6 +267,7 @@ class DiscreteSACConfig(LearnableConfig):
     n_critics: int = 2
     initial_temperature: float = 1.0
     target_update_interval: int = 8000
+    regulariser_factory: RegulariserFactory = make_regulariser_field()
 
     def create(self, device: DeviceArg = False) -> "DiscreteSAC":
         return DiscreteSAC(self, device)
@@ -309,6 +311,10 @@ class DiscreteSAC(QLearningAlgoBase[DiscreteSACImpl, DiscreteSACConfig]):
             log_temp.parameters(), lr=self._config.temp_learning_rate
         )
 
+        regulariser = create_discrete_regulariser(
+            regulariser_factory=self._config.regulariser_factory
+        )
+
         self._impl = DiscreteSACImpl(
             observation_shape=observation_shape,
             action_size=action_size,
@@ -320,6 +326,7 @@ class DiscreteSAC(QLearningAlgoBase[DiscreteSACImpl, DiscreteSACConfig]):
             temp_optim=temp_optim,
             gamma=self._config.gamma,
             device=self._device,
+            regulariser=regulariser,
         )
 
     def inner_update(self, batch: TorchMiniBatch) -> Dict[str, float]:
@@ -332,8 +339,9 @@ class DiscreteSAC(QLearningAlgoBase[DiscreteSACImpl, DiscreteSACConfig]):
             temp_loss, temp = self._impl.update_temp(batch)
             metrics.update({"temp_loss": temp_loss, "temp": temp})
 
-        critic_loss = self._impl.update_critic(batch)
+        critic_loss, reg_val = self._impl.update_critic(batch)
         metrics.update({"critic_loss": critic_loss})
+        metrics.update({"critic_regularisation_value": reg_val})
 
         actor_loss = self._impl.update_actor(batch)
         metrics.update({"actor_loss": actor_loss})

@@ -7,18 +7,19 @@ from ...constants import IMPL_NOT_INITIALIZED_ERROR, ActionSpace
 from ...dataset import Shape
 from ...models.builders import (
     create_continuous_q_function,
+    create_continuous_regulariser,
     create_discrete_q_function,
+    create_discrete_regulariser,
     create_parameter,
     create_squashed_normal_policy,
 )
 from ...models.encoders import EncoderFactory, make_encoder_field
 from ...models.optimizers import OptimizerFactory, make_optimizer_field
 from ...models.q_functions import QFunctionFactory, make_q_func_field
+from ...models.regularisers import RegulariserFactory, make_regulariser_field
 from ...torch_utility import TorchMiniBatch
 from .base import QLearningAlgoBase
 from .torch.cql_impl import CQLImpl, DiscreteCQLImpl
-
-from .regularisers import RegulariserPass
 
 __all__ = ["CQLConfig", "CQL", "DiscreteCQLConfig", "DiscreteCQL"]
 
@@ -124,7 +125,7 @@ class CQLConfig(LearnableConfig):
     conservative_weight: float = 5.0
     n_action_samples: int = 10
     soft_q_backup: bool = False
-    regulariser = RegulariserPass()
+    regulariser_factory: RegulariserFactory = make_regulariser_field()
 
     def create(self, device: DeviceArg = False) -> "CQL":
         return CQL(self, device)
@@ -174,6 +175,10 @@ class CQL(QLearningAlgoBase[CQLImpl, CQLConfig]):
             log_alpha.parameters(), lr=self._config.alpha_learning_rate
         )
 
+        regulariser = create_continuous_regulariser(
+            regulariser_factory=self._config.regulariser_factory
+        )
+
         self._impl = CQLImpl(
             observation_shape=observation_shape,
             action_size=action_size,
@@ -192,7 +197,7 @@ class CQL(QLearningAlgoBase[CQLImpl, CQLConfig]):
             n_action_samples=self._config.n_action_samples,
             soft_q_backup=self._config.soft_q_backup,
             device=self._device,
-            regulariser=self._config.regulariser
+            regulariser=regulariser,
         )
 
     def inner_update(self, batch: TorchMiniBatch) -> Dict[str, float]:
@@ -210,9 +215,10 @@ class CQL(QLearningAlgoBase[CQLImpl, CQLConfig]):
             alpha_loss, alpha = self._impl.update_alpha(batch)
             metrics.update({"alpha_loss": alpha_loss, "alpha": alpha})
 
-        critic_loss, cql_loss = self._impl.update_critic(batch)
+        critic_loss, cql_loss, reg_val = self._impl.update_critic(batch)
         metrics.update({"critic_loss": critic_loss})
         metrics.update({"cql_loss": cql_loss})
+        metrics.update({"critic_regularisation_value": reg_val})
 
         actor_loss = self._impl.update_actor(batch)
         metrics.update({"actor_loss": actor_loss})
@@ -276,6 +282,7 @@ class DiscreteCQLConfig(LearnableConfig):
     n_critics: int = 1
     target_update_interval: int = 8000
     alpha: float = 1.0
+    regulariser_factory: RegulariserFactory = make_regulariser_field()
 
     def create(self, device: DeviceArg = False) -> "DiscreteCQL":
         return DiscreteCQL(self, device)
@@ -302,6 +309,10 @@ class DiscreteCQL(QLearningAlgoBase[DiscreteCQLImpl, DiscreteCQLConfig]):
             q_func.parameters(), lr=self._config.learning_rate
         )
 
+        regulariser = create_discrete_regulariser(
+            regulariser_factory=self._config.regulariser_factory
+        )
+
         self._impl = DiscreteCQLImpl(
             observation_shape=observation_shape,
             action_size=action_size,
@@ -310,14 +321,20 @@ class DiscreteCQL(QLearningAlgoBase[DiscreteCQLImpl, DiscreteCQLConfig]):
             gamma=self._config.gamma,
             alpha=self._config.alpha,
             device=self._device,
+            regulariser=regulariser,
         )
 
     def inner_update(self, batch: TorchMiniBatch) -> Dict[str, float]:
         assert self._impl is not None, IMPL_NOT_INITIALIZED_ERROR
-        loss, conservative_loss = self._impl.update(batch)
+        loss, conservative_loss, reg_val = self._impl.update(batch)
         if self._grad_step % self._config.target_update_interval == 0:
             self._impl.update_target()
-        return {"loss": loss, "conservative_loss": conservative_loss}
+        res = {
+            "loss": loss,
+            "conservative_loss": conservative_loss,
+            "regularisation_value": reg_val,
+        }
+        return res
 
     def get_action_type(self) -> ActionSpace:
         return ActionSpace.DISCRETE

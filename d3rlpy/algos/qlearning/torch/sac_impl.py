@@ -2,10 +2,12 @@ import copy
 import math
 from typing import Tuple
 
+import numpy as np
 import torch
 from torch.optim import Optimizer
 
 from ....dataset import Shape
+from ....models.regularisers import Regulariser
 from ....models.torch import (
     CategoricalPolicy,
     EnsembleContinuousQFunction,
@@ -18,8 +20,6 @@ from ....torch_utility import TorchMiniBatch, hard_sync, train_api
 from ..base import QLearningAlgoImplBase
 from .ddpg_impl import DDPGBaseImpl
 from .utility import DiscreteQFunctionMixin
-
-from ..regularisers import Regulariser
 
 __all__ = ["SACImpl", "DiscreteSACImpl"]
 
@@ -41,7 +41,7 @@ class SACImpl(DDPGBaseImpl):
         gamma: float,
         tau: float,
         device: str,
-        regulariser: Regulariser
+        regulariser: Regulariser,
     ):
         super().__init__(
             observation_shape=observation_shape,
@@ -53,7 +53,7 @@ class SACImpl(DDPGBaseImpl):
             gamma=gamma,
             tau=tau,
             device=device,
-            regulariser=regulariser
+            regulariser=regulariser,
         )
         self._log_temp = log_temp
         self._temp_optim = temp_optim
@@ -117,6 +117,7 @@ class DiscreteSACImpl(DiscreteQFunctionMixin, QLearningAlgoImplBase):
         temp_optim: Optimizer,
         gamma: float,
         device: str,
+        regulariser: Regulariser,
     ):
         super().__init__(
             observation_shape=observation_shape,
@@ -131,18 +132,25 @@ class DiscreteSACImpl(DiscreteQFunctionMixin, QLearningAlgoImplBase):
         self._critic_optim = critic_optim
         self._temp_optim = temp_optim
         self._targ_q_func = copy.deepcopy(q_func)
+        self._regulariser = regulariser
 
     @train_api
-    def update_critic(self, batch: TorchMiniBatch) -> float:
+    def update_critic(self, batch: TorchMiniBatch) -> np.ndarray:
         self._critic_optim.zero_grad()
 
         q_tpn = self.compute_target(batch)
-        loss = self.compute_critic_loss(batch, q_tpn)
+        loss, reg_val = self.compute_critic_loss(batch, q_tpn)
 
         loss.backward()
         self._critic_optim.step()
 
-        return float(loss.cpu().detach().numpy())
+        res = np.array(
+            [
+                float(loss.cpu().detach().numpy()),
+                float(reg_val.cpu().detach().numpy()),
+            ]
+        )
+        return res
 
     def compute_target(self, batch: TorchMiniBatch) -> torch.Tensor:
         with torch.no_grad():
@@ -161,8 +169,8 @@ class DiscreteSACImpl(DiscreteQFunctionMixin, QLearningAlgoImplBase):
         self,
         batch: TorchMiniBatch,
         q_tpn: torch.Tensor,
-    ) -> torch.Tensor:
-        return self._q_func.compute_error(
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        loss = self._q_func.compute_error(
             observations=batch.observations,
             actions=batch.actions.long(),
             rewards=batch.rewards,
@@ -170,6 +178,8 @@ class DiscreteSACImpl(DiscreteQFunctionMixin, QLearningAlgoImplBase):
             terminals=batch.terminals,
             gamma=self._gamma**batch.intervals,
         )
+        reg_val = self._regulariser(algo=self, batch=batch)
+        return loss + reg_val, reg_val
 
     @train_api
     def update_actor(self, batch: TorchMiniBatch) -> float:

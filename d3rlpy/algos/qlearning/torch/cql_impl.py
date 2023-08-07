@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from torch.optim import Optimizer
 
 from ....dataset import Shape
+from ....models.regularisers import Regulariser
 from ....models.torch import (
     EnsembleContinuousQFunction,
     EnsembleDiscreteQFunction,
@@ -47,6 +48,7 @@ class CQLImpl(SACImpl):
         n_action_samples: int,
         soft_q_backup: bool,
         device: str,
+        regulariser: Regulariser,
     ):
         super().__init__(
             observation_shape=observation_shape,
@@ -60,6 +62,7 @@ class CQLImpl(SACImpl):
             gamma=gamma,
             tau=tau,
             device=device,
+            regulariser=regulariser,
         )
         self._alpha_threshold = alpha_threshold
         self._conservative_weight = conservative_weight
@@ -70,27 +73,31 @@ class CQLImpl(SACImpl):
 
     def compute_critic_loss(
         self, batch: TorchMiniBatch, q_tpn: torch.Tensor
-    ) -> Tuple[torch.Tensor]:
-        loss = super().compute_critic_loss(batch, q_tpn)
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        loss, reg_val = super().compute_critic_loss(batch, q_tpn)
         conservative_loss = self._compute_conservative_loss(
             batch.observations, batch.actions, batch.next_observations
         )
-        return loss + conservative_loss, conservative_loss
-    
+        return loss + conservative_loss, conservative_loss, reg_val
+
     @train_api
     def update_critic(self, batch: TorchMiniBatch) -> np.array:
         self._critic_optim.zero_grad()
 
         q_tpn = self.compute_target(batch)
 
-        loss, cql_loss = self.compute_critic_loss(batch, q_tpn)
+        loss, cql_loss, reg_val = self.compute_critic_loss(batch, q_tpn)
 
         loss.backward()
         self._critic_optim.step()
 
         res = np.array(
-            [loss.cpu().detach().numpy(), cql_loss.cpu().detach().numpy()]
-            )
+            [
+                float(loss.cpu().detach().numpy()),
+                float(cql_loss.cpu().detach().numpy()),
+                float(reg_val.cpu().detach().numpy()),
+            ]
+        )
         return res
 
     @train_api
@@ -217,6 +224,7 @@ class DiscreteCQLImpl(DoubleDQNImpl):
         gamma: float,
         alpha: float,
         device: str,
+        regulariser: Regulariser,
     ):
         super().__init__(
             observation_shape=observation_shape,
@@ -225,6 +233,7 @@ class DiscreteCQLImpl(DoubleDQNImpl):
             optim=optim,
             gamma=gamma,
             device=device,
+            regulariser=regulariser,
         )
         self._alpha = alpha
 
@@ -232,13 +241,13 @@ class DiscreteCQLImpl(DoubleDQNImpl):
         self,
         batch: TorchMiniBatch,
         q_tpn: torch.Tensor,
-    ) -> Tuple[torch.Tensor]:
-        loss = super().compute_loss(batch, q_tpn)
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        loss, reg_val = super().compute_loss(batch, q_tpn)
         conservative_loss = self._compute_conservative_loss(
             batch.observations, batch.actions.long()
         )
         conservative_loss = self._alpha * conservative_loss
-        return loss + conservative_loss, conservative_loss
+        return loss + conservative_loss, conservative_loss, reg_val
 
     def _compute_conservative_loss(
         self, obs_t: torch.Tensor, act_t: torch.Tensor
@@ -261,11 +270,16 @@ class DiscreteCQLImpl(DoubleDQNImpl):
 
         q_tpn = self.compute_target(batch)
 
-        loss, cql_loss = self.compute_loss(batch, q_tpn)
+        loss, cql_loss, reg_val = self.compute_loss(batch, q_tpn)
 
         loss.backward()
         self._optim.step()
 
-        return np.array(
-            [loss.cpu().detach().numpy(), cql_loss.cpu().detach().numpy()]
+        res = np.array(
+            [
+                float(loss.cpu().detach().numpy()),
+                float(cql_loss.cpu().detach().numpy()),
+                float(reg_val.cpu().detach().numpy()),
+            ]
         )
+        return res

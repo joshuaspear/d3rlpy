@@ -67,7 +67,6 @@ __all__ = [
 
 
 class QLearningAlgoImplBase(ImplBase):
-    
     @eval_api
     def predict_best_action(self, x: torch.Tensor) -> torch.Tensor:
         return self.inner_predict_best_action(x)
@@ -149,8 +148,6 @@ class QLearningAlgoImplBase(ImplBase):
 
     def reset_optimizer_states(self) -> None:
         reset_optimizer_states(self)
-
-         
 
 
 TQLearningImpl = TypeVar("TQLearningImpl", bound=QLearningAlgoImplBase)

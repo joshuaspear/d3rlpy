@@ -3,11 +3,11 @@ from abc import ABCMeta, abstractmethod
 from typing import Tuple
 
 import numpy as np
-
 import torch
 from torch.optim import Optimizer
 
 from ....dataset import Shape
+from ....models.regularisers import Regulariser
 from ....models.torch import (
     EnsembleContinuousQFunction,
     EnsembleQFunction,
@@ -16,8 +16,6 @@ from ....models.torch import (
 from ....torch_utility import TorchMiniBatch, soft_sync, train_api
 from ..base import QLearningAlgoImplBase
 from .utility import ContinuousQFunctionMixin
-
-from ..regularisers import Regulariser
 
 __all__ = ["DDPGImpl"]
 
@@ -45,7 +43,7 @@ class DDPGBaseImpl(
         gamma: float,
         tau: float,
         device: str,
-        regulariser: Regulariser
+        regulariser: Regulariser,
     ):
         super().__init__(
             observation_shape=observation_shape,
@@ -72,15 +70,17 @@ class DDPGBaseImpl(
 
         loss.backward()
         self._critic_optim.step()
-        res = np.array([
-            float(loss.cpu().detach().numpy()), 
-            float(reg_val.cpu().detach().numpy())
-        ])
+        res = np.array(
+            [
+                float(loss.cpu().detach().numpy()),
+                float(reg_val.cpu().detach().numpy()),
+            ]
+        )
         return res
 
     def compute_critic_loss(
         self, batch: TorchMiniBatch, q_tpn: torch.Tensor
-    ) -> Tuple[torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         loss = self._q_func.compute_error(
             observations=batch.observations,
             actions=batch.actions,
