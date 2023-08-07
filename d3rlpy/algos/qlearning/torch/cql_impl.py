@@ -96,8 +96,7 @@ class CQLImpl(SACImpl):
                 float(loss.cpu().detach().numpy()),
                 float(cql_loss.cpu().detach().numpy()),
                 float(reg_val.cpu().detach().numpy()),
-            ]
-        )
+            ])
         return res
 
     @train_api
