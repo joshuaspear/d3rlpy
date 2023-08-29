@@ -38,7 +38,7 @@ class CQLModules(SACModules):
 class CQLLoss(RegularisedCriticLoss):
     conservative_loss: torch.Tensor
 
-    def get_loss(self)->torch.Tensor:
+    def get_loss(self) -> torch.Tensor:
         return super().get_loss() + self.conservative_loss
 
 
