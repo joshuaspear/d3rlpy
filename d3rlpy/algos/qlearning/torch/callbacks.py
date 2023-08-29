@@ -16,11 +16,14 @@ class QLearningCallback(metaclass=ABCMeta):
 
 
 class ParameterReset(QLearningCallback):
-    def __init__(self, replay_ratio: int, encoder_reset:Sequence[bool],
-                 output_reset:bool, algo:QLearningAlgoBase=None) -> None:
+    def __init__(self, replay_ratio:int, final_epoch:int,
+                 encoder_reset:Sequence[bool], output_reset:bool, 
+                 algo:QLearningAlgoBase=None
+                 ) -> None:
         self._replay_ratio = replay_ratio
         self._encoder_reset = encoder_reset
         self._output_reset = output_reset
+        self._final_epoch = final_epoch
         self._check = False
         if algo is not None:
             self._check_layer_resets(algo=algo)
@@ -64,7 +67,7 @@ class ParameterReset(QLearningCallback):
         if not self._check:
             self._check_layer_resets(algo=algo)
         assert isinstance(algo._impl, QLearningAlgoImplBase)
-        if epoch % self._replay_ratio == 0:
+        if (epoch % self._replay_ratio == 0) and epoch <= self._final_epoch:
             reset_lst = [*self._encoder_reset, self._output_reset]
             for q_func in algo._impl.q_function:
                 q_func_layers = self._get_layers(q_func)
