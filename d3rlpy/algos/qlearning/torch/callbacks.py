@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
-from typing import Sequence
-
+from typing import Sequence, List
+import torch.nn as nn
 
 from ... import QLearningAlgoBase, QLearningAlgoImplBase
 from ....constants import IMPL_NOT_INITIALIZED_ERROR
@@ -26,17 +26,21 @@ class ParameterReset(QLearningCallback):
             self._check_layer_resets(algo=algo)
             
     
+    def _get_layers(self, q_func:nn.ModuleList)->List[nn.Module]:
+        all_modules = {nm:module for (nm, module) in q_func.named_modules()}
+        q_func_layers = [
+            *all_modules["_encoder._layers"],
+            all_modules["_fc"]
+            ]
+        return q_func_layers
+    
     def _check_layer_resets(self, algo:QLearningAlgoBase):
         assert algo._impl is not None, IMPL_NOT_INITIALIZED_ERROR
         assert isinstance(algo._impl, QLearningAlgoImplBase)
         
         all_valid_layers = []
         for q_func in algo._impl.q_function:
-            all_modules = {nm:module for (nm, module) in q_func.named_modules()}
-            q_func_layers = [
-                *all_modules["_encoder._layers"],
-                all_modules["_fc"]
-                ]
+            q_func_layers = self._get_layers(q_func)
             if len(self._encoder_reset) + 1 != len(q_func_layers):
                 raise ValueError(
                     f"""
@@ -61,6 +65,9 @@ class ParameterReset(QLearningCallback):
             self._check_layer_resets(algo=algo)
         assert isinstance(algo._impl, QLearningAlgoImplBase)
         if epoch % self._replay_ratio == 0:
-            for lr, layer in zip(self._layer_reset, algo._impl.q_function):
-                if lr:
-                    layer.reset_parameters()
+            reset_lst = [*self._encoder_reset, self._output_reset]
+            for q_func in algo._impl.q_function:
+                q_func_layers = self._get_layers(q_func)
+                for lr, layer in zip(reset_lst, q_func_layers):
+                    if lr:
+                        layer.reset_parameters()
