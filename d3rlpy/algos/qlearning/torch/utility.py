@@ -1,30 +1,29 @@
-from typing import Optional
+import dataclasses
 
 import torch
 from typing_extensions import Protocol
 
 from ....models.torch import (
-    EnsembleContinuousQFunction,
-    EnsembleDiscreteQFunction,
+    ContinuousEnsembleQFunctionForwarder,
+    DiscreteEnsembleQFunctionForwarder,
 )
 
-__all__ = ["DiscreteQFunctionMixin", "ContinuousQFunctionMixin"]
+__all__ = ["DiscreteQFunctionMixin", "ContinuousQFunctionMixin", "CriticLoss"]
 
 
 class _DiscreteQFunctionProtocol(Protocol):
-    _q_func: Optional[EnsembleDiscreteQFunction]
+    _q_func_forwarder: DiscreteEnsembleQFunctionForwarder
 
 
 class _ContinuousQFunctionProtocol(Protocol):
-    _q_func: Optional[EnsembleContinuousQFunction]
+    _q_func_forwarder: ContinuousEnsembleQFunctionForwarder
 
 
 class DiscreteQFunctionMixin:
     def inner_predict_value(
         self: _DiscreteQFunctionProtocol, x: torch.Tensor, action: torch.Tensor
     ) -> torch.Tensor:
-        assert self._q_func is not None
-        values = self._q_func(x, reduction="mean")
+        values = self._q_func_forwarder.compute_expected_q(x, reduction="mean")
         flat_action = action.reshape(-1)
         return values[torch.arange(0, x.size(0)), flat_action].reshape(-1)
 
@@ -35,5 +34,24 @@ class ContinuousQFunctionMixin:
         x: torch.Tensor,
         action: torch.Tensor,
     ) -> torch.Tensor:
-        assert self._q_func is not None
-        return self._q_func(x, action, reduction="mean").reshape(-1)
+        return self._q_func_forwarder.compute_expected_q(
+            x, action, reduction="mean"
+        ).reshape(-1)
+
+
+@dataclasses.dataclass(frozen=True)
+class CriticLoss:
+    td_loss: torch.Tensor
+    loss: torch.Tensor = dataclasses.field(init=False)
+
+    def __post_init__(self)->None:
+        object.__setattr__(self, "loss", self.get_loss())
+
+    def get_loss(self)->torch.Tensor:
+        return self.td_loss
+
+class RegularisedCriticLoss(CriticLoss):
+    reg_val: torch.Tensor
+    
+    def get_loss(self)->torch.Tensor:
+        return super().get_loss() + self.reg_val
