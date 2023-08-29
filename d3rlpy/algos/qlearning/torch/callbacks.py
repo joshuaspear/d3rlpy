@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from typing import Sequence
 
+
 from ... import QLearningAlgoBase, QLearningAlgoImplBase
 from ....constants import IMPL_NOT_INITIALIZED_ERROR
 
@@ -15,10 +16,11 @@ class QLearningCallback(metaclass=ABCMeta):
 
 
 class ParameterReset(QLearningCallback):
-    def __init__(self, replay_ratio: int, layer_reset:Sequence[bool], 
-                 algo:QLearningAlgoBase=None) -> None:
+    def __init__(self, replay_ratio: int, encoder_reset:Sequence[bool],
+                 output_reset:bool, algo:QLearningAlgoBase=None) -> None:
         self._replay_ratio = replay_ratio
-        self._layer_reset = layer_reset
+        self._encoder_reset = encoder_reset
+        self._output_reset = output_reset
         self._check = False
         if algo is not None:
             self._check_layer_resets(algo=algo)
@@ -28,14 +30,27 @@ class ParameterReset(QLearningCallback):
         assert algo._impl is not None, IMPL_NOT_INITIALIZED_ERROR
         assert isinstance(algo._impl, QLearningAlgoImplBase)
         
-        if  len(self._layer_reset) != len(algo._impl.q_function):
-            raise ValueError
-        valid_layers = [
-            hasattr(layer, 'reset_parameters') for lr, layer in zip(
-                self._layer_reset, algo._impl.q_function) 
-            if lr
-            ]
-        self._check = all(valid_layers)
+        all_valid_layers = []
+        for q_func in algo._impl.q_function:
+            all_modules = {nm:module for (nm, module) in q_func.named_modules()}
+            q_func_layers = [
+                *all_modules["_encoder._layers"],
+                all_modules["_fc"]
+                ]
+            if len(self._encoder_reset) + 1 != len(q_func_layers):
+                raise ValueError(
+                    f"""
+                    q_function layers: {q_func_layers};
+                    specified encoder layers: {self._encoder_reset} 
+                    """
+                    )
+            valid_layers = [
+                hasattr(layer, 'reset_parameters') for lr, layer in zip(
+                    self._encoder_reset, q_func_layers) 
+                if lr
+                ]
+            all_valid_layers.append(all(valid_layers))
+        self._check = all(all_valid_layers)
         if not self._check:
             raise ValueError(
                 "Some layer do not contain resettable parameters"

@@ -13,7 +13,7 @@ from ....models.regularisers import Regulariser
 from ....models.torch import ContinuousEnsembleQFunctionForwarder, Policy
 from ....torch_utility import Modules, TorchMiniBatch, hard_sync, soft_sync
 from ..base import QLearningAlgoImplBase
-from .utility import ContinuousQFunctionMixin, CriticLoss
+from .utility import ContinuousQFunctionMixin, RegularisedCriticLoss
 
 __all__ = [
     "DDPGImpl",
@@ -80,7 +80,7 @@ class DDPGBaseImpl(
 
     def compute_critic_loss(
         self, batch: TorchMiniBatch, q_tpn: torch.Tensor
-    ) -> CriticLoss:
+    ) -> RegularisedCriticLoss:
         loss = self._q_func_forwarder.compute_error(
             observations=batch.observations,
             actions=batch.actions,
@@ -90,7 +90,7 @@ class DDPGBaseImpl(
             gamma=self._gamma**batch.intervals,
         )
         reg_val = self._regulariser(algo=self, batch=batch)
-        return CriticLoss(td_loss=loss, reg_val=reg_val)
+        return RegularisedCriticLoss(td_loss=loss, reg_val=reg_val)
 
     def update_actor(self, batch: TorchMiniBatch) -> Dict[str, float]:
         # Q function should be inference mode for stability

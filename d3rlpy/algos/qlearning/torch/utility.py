@@ -50,6 +50,7 @@ class CriticLoss:
     def get_loss(self) -> torch.Tensor:
         return self.td_loss
 
+@dataclasses.dataclass(frozen=True)
 class RegularisedCriticLoss(CriticLoss):
     reg_val: torch.Tensor
     
