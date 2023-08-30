@@ -86,10 +86,8 @@ class DQNImpl(DiscreteQFunctionMixin, QLearningAlgoImplBase):
             terminals=batch.terminals,
             gamma=self._gamma**batch.intervals,
         )
-        vals = asdict_as_float(loss)
-        del vals["loss"]
         reg_val = self._regulariser(algo=self, batch=batch)
-        return RegularisedCriticLoss(**vals, reg_val=reg_val)
+        return RegularisedCriticLoss(td_loss=loss, reg_val=reg_val)
 
     def compute_target(self, batch: TorchMiniBatch) -> torch.Tensor:
         with torch.no_grad():
